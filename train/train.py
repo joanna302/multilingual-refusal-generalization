@@ -31,8 +31,10 @@ def parse_arguments():
         default="en")
     parser.add_argument(
         '--hf_id', 
-        type=str, 
-        default="joanna303")
+        type=str)
+    parser.add_argument(
+        '--hf_token', 
+        type=str)
     parser.add_argument(
         '--lr', 
         type=float, 
