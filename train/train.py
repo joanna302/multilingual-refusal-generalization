@@ -93,25 +93,23 @@ if __name__ == "__main__":
         alpaca_data = Dataset.from_pandas(alpaca_data.rename({"output":"chosen_response"}, axis=1))
 
     if args.add_alpaca==True: 
-        name = f"{args.model_name}-Base_{args.name_data}_alpaca_{args.alpaca_ratio}_part_{args.training_type}_LoRA_{args.lr}"
+        name = f"Apertus-8B-Base_{args.name_data}_alpaca_{args.alpaca_ratio}_part_{args.training_type}_LoRA_{args.lr}"
     else : 
-        name = f"{args.model_name}_{args.name_data}_{args.training_type}_{args.lr}"
+        name = f"Apertus-8B-Base_{args.name_data}_{args.training_type}_{args.lr}"
 
     os.environ['WANDB_PROJECT'] = name
     
     model_base, tokenizer_base = FastLanguageModel.from_pretrained(
         model_name = f"swiss-ai/Apertus-8B-2509",
         max_seq_length = 2048,   # Context length - can be longer, but uses more memory
-        load_in_4bit = False,     # 4bit uses much less memory
-        load_in_8bit = False,    # A bit more accurate, uses 2x memory
-        full_finetuning = False, 
+        load_in_4bit = True,     # 4bit uses much less memory
         device_map='auto', 
     )
     del tokenizer_base
     torch.cuda.empty_cache()
     gc.collect()
 
-    tokenizer = AutoTokenizer.from_pretrained(f"unsloth/{args.model_name}-Instruct-2509")
+    tokenizer = AutoTokenizer.from_pretrained(f"unsloth/Apertus-8B-Instruct-2509")
     tokenizer.pad_token = tokenizer.eos_token 
     tokenizer.padding_side = 'right' # padding to right (otherwise SFTTrainer shows warning)
 

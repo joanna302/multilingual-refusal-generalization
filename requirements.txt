@@ -1,6 +1,6 @@
-unsloth
-torch
-transformers
+unsloth==2025.10.9
+torch==2.8.0
+transformers==4.56.0
 pandas 
 matplotlib
 datasets
