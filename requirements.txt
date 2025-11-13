@@ -1,0 +1,14 @@
+unsloth
+torch
+transformers
+pandas 
+matplotlib
+datasets
+wandb
+langdetect
+scikit-learn
+hf_transfer
+seaborn
+langcodes
+iso639-lang
+fasttext
