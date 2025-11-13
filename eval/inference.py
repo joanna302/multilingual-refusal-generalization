@@ -1,3 +1,4 @@
+from unsloth import FastLanguageModel
 import datasets
 import pandas as pd 
 import torch 
@@ -5,7 +6,6 @@ import argparse
 from tqdm import tqdm 
 import os 
 
-from Levenshtein import distance
 from transformers import AutoTokenizer, AutoModelForCausalLM
 from datasets import Dataset
 from torch.utils.data import DataLoader
@@ -19,12 +19,7 @@ torch._dynamo.config.cache_size_limit = 256
 
 
 def chat_template(example):
-    if "vanilla" in args.data_type: 
-        prompt_type = "vanilla"
-    elif "adv" in args.data_type: 
-        prompt_type = "adversarial"
-    else : 
-        prompt_type = "prompt"
+    prompt_type = "prompt"
     conversation = [
         {"role": "user", "content": example[prompt_type]}
     ]
@@ -90,33 +85,43 @@ if __name__ == "__main__":
             data_eval = data_eval.drop(col, axis=1)
 
     if args.add_alpaca==True: 
-        model_name = f"{args.model_name}-Base_{name_data}_alpaca_{args.alpaca_ratio}_part_{args.training_type}_{args.lr}"
+        model_name = f"{args.model_name}-Base_{args.name_data}_alpaca_{args.alpaca_ratio}_part_{args.training_type}_LoRA_{args.lr}"
     else : 
-        model_name = f"{args.model_name}-Base_{name_data}_{args.training_type}_{args.lr}"
+        model_name = f"{args.model_name}-Base_{args.name_data}_{args.training_type}_LoRA_{args.lr}"
 
     #model = AutoModelForCausalLM.from_pretrained(f"{args.repo_id}/{model_name}", subfolder=f"{args.checkpoint}").to('cuda') 
     #tokenizer = AutoTokenizer.from_pretrained(f"{args.repo_id}/{model_name}")
 
-    # Configuration
-    max_seq_length = 2048  # Choose any! Unsloth auto-supports RoPE scaling
-    dtype = None  # None for auto detection. Float16 for Tesla T4, V100, Bfloat16 for Ampere+
-    load_in_4bit = True  # Use 4bit quantization to reduce memory usage
+    max_seq_length = 2048 
 
-    # Load model and tokenizer
+    print(f"{args.repo_id}/{model_name}")
+
+    # Load base model
     model, tokenizer = FastLanguageModel.from_pretrained(
-        model_name=f"{args.repo_id}/{model_name}", 
-        subfolder=f"{args.checkpoint}",
+        model_name="swiss-ai/Apertus-8B-2509",  # Base model
         max_seq_length=max_seq_length,
-        load_in_4bit=load_in_4bit,
-        dtype= dtype
+        load_in_4bit=False, 
+        dtype=None )
+
+    # Load LoRA adapter directly
+    model = PeftModel.from_pretrained(
+        model,
+        f"{args.repo_id}/{model_name}",
+        subfolder=args.checkpoint if args.checkpoint else None
     )
 
-    # Enable inference mode for faster inference
+    # Merge adapter weights for faster inference (optional)
+    model = model.merge_and_unload()
+
+    # Enable inference mode
     FastLanguageModel.for_inference(model)
 
     tokenizer.padding_side = 'left'
-    if tokenizer.pad_token is None:
-        tokenizer.pad_token = tokenizer.eos_token
+
+    tokenizer.eos_token = "<s>"
+    tokenizer.pad_token = "<s>" 
+    model.config.eos_token_id = tokenizer.eos_token_id
+    model.config.pad_token_id = tokenizer.pad_token_id
 
     ### process data
     data_high_bs, data_low_bs = preprocess_data(data_eval)
@@ -151,42 +156,11 @@ if __name__ == "__main__":
     outputs_list=[]
     distance_list=[]
 
-    file_name = f"data_with_output_{model_name}_{args.data_type}_{args.checkpoint}_lora.csv"
+    file_name = f"data_with_output_{model_name}_{args.checkpoint}.csv"
         
     model.eval()
 
     with torch.no_grad():
-
-        for batch in tqdm(data_loader_low_bs):
-            print(set(batch['language']))
-            model_inputs = tokenizer(
-                batch["text"], 
-                return_tensors="pt", 
-                padding=True, 
-                truncation=True,
-            ).to(model.device)
-
-            # conduct text completion
-            generated_ids = model.generate(
-                **model_inputs,
-                max_new_tokens=100,
-                temperature = 0.7, 
-                top_p = 0.8, 
-                top_k = 20, 
-            )
-
-            output_ids_list = [generated_ids[i][len(model_inputs.input_ids[i]):].tolist() for i in range(len(generated_ids))]
-            output_ids_list = [[token for token in ids if token != 0] for ids in output_ids_list]
-            output = [tokenizer.decode(output_ids) for output_ids in output_ids_list if output_ids != 0]
-
-            print(output)
-
-            outputs_list.extend(output)
-
-        data_low_bs = data_low_bs.add_column("output", outputs_list)
-
-        
-        outputs_list=[]
     
         for batch in tqdm(data_loader_high_bs):
             print(set(batch['language']))
@@ -205,10 +179,11 @@ if __name__ == "__main__":
                 temperature = 0.7, 
                 top_p = 0.8, 
                 top_k = 20, 
+                eos_token_id=tokenizer.eos_token_id
             )
 
             output_ids_list=[generated_ids[i][len(model_inputs.input_ids[i]):].tolist() for i in range(len(generated_ids))]
-            output_ids_list = [[token for token in ids if token != 0] for ids in output_ids_list]
+            output_ids_list = [[token for token in ids if token != 1] for ids in output_ids_list]
             output = [tokenizer.decode(output_ids) for output_ids in output_ids_list]
             print(output)
 
@@ -216,6 +191,38 @@ if __name__ == "__main__":
 
         data_high_bs = data_high_bs.add_column("output", outputs_list) 
 
+        outputs_list=[]
+
+        for batch in tqdm(data_loader_low_bs):
+            print(set(batch['language']))
+            model_inputs = tokenizer(
+                batch["text"], 
+                return_tensors="pt", 
+                padding=True, 
+                truncation=True,
+            ).to(model.device)
+
+            # conduct text completion
+            generated_ids = model.generate(
+                **model_inputs,
+                max_new_tokens=100,
+                temperature = 0.7, 
+                top_p = 0.8, 
+                top_k = 20, 
+                eos_token_id=tokenizer.eos_token_id
+            )
+
+            output_ids_list = [generated_ids[i][len(model_inputs.input_ids[i]):].tolist() for i in range(len(generated_ids))]
+            output_ids_list = [[token for token in ids if token != 1] for ids in output_ids_list]
+            output = [tokenizer.decode(output_ids) for output_ids in output_ids_list if output_ids != 0]
+
+            print(output)
+
+            outputs_list.extend(output)
+
+        data_low_bs = data_low_bs.add_column("output", outputs_list)
+
+
         data_res = datasets.concatenate_datasets([data_high_bs, data_low_bs])
 
-        data_res.to_csv(f"../results/Apertus-8B/{name_data}/{file_name}")
+        data_res.to_csv(f"../results/Apertus-8B/{args.name_data}/{file_name}")
