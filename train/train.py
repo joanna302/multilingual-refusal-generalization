@@ -93,7 +93,7 @@ if __name__ == "__main__":
         alpaca_data = Dataset.from_pandas(alpaca_data.rename({"output":"chosen_response"}, axis=1))
 
     if args.add_alpaca==True: 
-        name = f"{args.model_name}-Base_{args.name_data}_alpaca_{args.alpaca_ratio}_part_{args.training_type}_{args.lr}"
+        name = f"{args.model_name}-Base_{args.name_data}_alpaca_{args.alpaca_ratio}_part_{args.training_type}_LoRA_{args.lr}"
     else : 
         name = f"{args.model_name}_{args.name_data}_{args.training_type}_{args.lr}"
 
