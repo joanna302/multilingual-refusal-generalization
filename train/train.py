@@ -39,7 +39,7 @@ def parse_arguments():
     parser.add_argument(
         '--lr', 
         type=float, 
-        default=8e-4)
+        default=2e-4)
     parser.add_argument(
         '--per_device_train_batch_size', 
         type=int, 
@@ -47,11 +47,11 @@ def parse_arguments():
     parser.add_argument(
         '--r', 
         type=int, 
-        default=16)
+        default=32)
     parser.add_argument(
         '--alpha', 
         type=int, 
-        default=16)
+        default=32)
     parser.add_argument(
         '--seed', 
         type=int, 
@@ -94,7 +94,7 @@ def apply_custom_chat_template(conversation):
         elif role == "user":
             text += f"<|user_start|>{content}<|user_end|>"
         elif role == "assistant":
-            text += f"<|assistant_end|>\n{content}<|assistant_end|>"
+            text += f"<|assistant_start|>\n{content}<|assistant_end|>"
 
     return text
 
@@ -206,7 +206,7 @@ if __name__ == "__main__":
             dataset_text_field = "text",
             per_device_train_batch_size = args.per_device_train_batch_size,
             warmup_steps = 5,
-            num_train_epochs = 3, # Set this for 1 full training run.
+            num_train_epochs = 2, # Set this for 1 full training run.
             max_steps = -1,  
             learning_rate = args.lr, # 2e-4 = high lr / 2e-5 = low lr / 8e-5 = middle lr 
             logging_steps = 1,
@@ -218,7 +218,7 @@ if __name__ == "__main__":
             report_to = "wandb", # Use this for WandB etc
             #eval_strategy="steps", 
             save_strategy="steps", 
-            save_steps=1/6, 
+            save_steps=1/4, 
             push_to_hub=True, 
             hub_model_id=f"{args.hf_id}/{name}", 
             hub_token=args.hf_token, 

@@ -25,6 +25,22 @@ def chat_template(example):
     ]
     return {"conversation": conversation}
 
+def apply_custom_chat_template(conversation):
+    """Format a conversation with simple, clear structure"""
+    text = ""
+    for turn in conversation:
+        role = turn["role"]
+        content = turn["content"]
+        
+        if role == "system":
+            text += f"<|system_start|>{content}<|system_end|>"
+        elif role == "user":
+            text += f"<|user_start|>{content}<|user_end|>"
+        elif role == "assistant":
+            text += f"<|assistant_start|>\n{content}<|assistant_end|>"
+
+    return text
+
 def parse_arguments():
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -46,7 +62,7 @@ def parse_arguments():
     parser.add_argument(
         '--lr', 
         type=int, 
-        default=8e-5)
+        default=8e-4)
     parser.add_argument(
         '--training_type', 
         type=str, 
@@ -85,7 +101,7 @@ if __name__ == "__main__":
             data_eval = data_eval.drop(col, axis=1)
 
     if args.add_alpaca==True: 
-        model_name = f"{args.model_name}-Base_{args.name_data}_alpaca_{args.alpaca_ratio}_part_{args.training_type}_LoRA_{args.lr}_wo_pf"
+        model_name = f"{args.model_name}-Base_{args.name_data}_alpaca_{args.alpaca_ratio}_part_{args.training_type}_LoRA_{args.lr}_new_chat_template_wo_pf"
     else : 
         model_name = f"{args.model_name}-Base_{args.name_data}_{args.training_type}_LoRA_{args.lr}"
 
@@ -118,29 +134,44 @@ if __name__ == "__main__":
 
     tokenizer.padding_side = 'left'
 
-    tokenizer.eos_token = "<s>"
-    tokenizer.pad_token = "<s>" 
+    special_tokens = [
+        "<|system_start|>", "<|system_end|>",
+        "<|user_start|>", "<|user_end|>",
+        "<|assistant_start|>", "<|assistant_end|>"
+    ]
+
+    tokenizer.add_special_tokens({"additional_special_tokens": special_tokens})
+    model.resize_token_embeddings(len(tokenizer))
+
+
+    tokenizer.eos_token = "<|assistant_end|>"
+    tokenizer.pad_token = "<pad>" 
     model.config.eos_token_id = tokenizer.eos_token_id
     model.config.pad_token_id = tokenizer.pad_token_id
 
     ### process data
     data_high_bs, data_low_bs = preprocess_data(data_eval)
 
-    text_low = tokenizer.apply_chat_template(
-        list(data_low_bs['conversation']),
-        tokenize = False,
-        add_generation_prompt = True, # Must add for generation
-        enable_thinking = False, # Disable thinking
-    )
+    text_low = [apply_custom_chat_template(conv) for conv in list(data_low_bs['conversation'])]
+
+
+    #text_low = tokenizer.apply_chat_template(
+    #    list(data_low_bs['conversation']),
+    #    tokenize = False,
+    #    add_generation_prompt = True, # Must add for generation
+    #    enable_thinking = False, # Disable thinking
+    #)
 
     data_low_bs = data_low_bs.add_column("text", text_low) 
 
-    text_high = tokenizer.apply_chat_template(
-        list(data_high_bs['conversation']),
-        tokenize = False,
-        add_generation_prompt=True, # Must add for generation
-        enable_thinking = False, # Disable thinking
-    )
+    #text_high = tokenizer.apply_chat_template(
+    #    list(data_high_bs['conversation']),
+    #    tokenize = False,
+    #    add_generation_prompt=True, # Must add for generation
+    #    enable_thinking = False, # Disable thinking
+    #)
+
+    text_high = [apply_custom_chat_template(conv) for conv in list(data_high_bs['conversation'])]
 
     data_high_bs = data_high_bs.add_column("text", text_high)   
 
