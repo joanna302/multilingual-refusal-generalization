@@ -14,6 +14,7 @@ import argparse
 import torch
 import gc
 import math 
+import wandb
 
 # Clear cache before training
 torch.cuda.empty_cache()
@@ -38,7 +39,19 @@ def parse_arguments():
     parser.add_argument(
         '--lr', 
         type=float, 
-        default=8e-5)
+        default=8e-4)
+    parser.add_argument(
+        '--per_device_train_batch_size', 
+        type=int, 
+        default=16)
+    parser.add_argument(
+        '--r', 
+        type=int, 
+        default=16)
+    parser.add_argument(
+        '--alpha', 
+        type=int, 
+        default=16)
     parser.add_argument(
         '--seed', 
         type=int, 
@@ -69,10 +82,29 @@ def apply_template(example):
     ]
     return {"conversation": conversation}
 
+def apply_custom_chat_template(conversation):
+    """Format a conversation with simple, clear structure"""
+    text = ""
+    for turn in conversation:
+        role = turn["role"]
+        content = turn["content"]
+        
+        if role == "system":
+            text += f"<|system_start|>{content}<|system_end|>"
+        elif role == "user":
+            text += f"<|user_start|>{content}<|user_end|>"
+        elif role == "assistant":
+            text += f"<|assistant_end|>\n{content}<|assistant_end|>"
+
+    return text
+
+# Apply to your
+
     
 if __name__ == "__main__": 
 
     args = parse_arguments()
+
 
     # Data prep 
 
@@ -93,11 +125,23 @@ if __name__ == "__main__":
         alpaca_data = Dataset.from_pandas(alpaca_data.rename({"output":"chosen_response"}, axis=1))
 
     if args.add_alpaca==True: 
-        name = f"Apertus-8B-Base_{args.name_data}_alpaca_{args.alpaca_ratio}_part_{args.training_type}_LoRA_{args.lr}"
+        name = f"Apertus-8B-Base_{args.name_data}_alpaca_{args.alpaca_ratio}_part_{args.training_type}_LoRA_{args.lr}_test"
     else : 
         name = f"Apertus-8B-Base_{args.name_data}_{args.training_type}_{args.lr}"
 
-    os.environ['WANDB_PROJECT'] = name
+    wandb.init(
+        project=name, 
+        name=f"{name}-v1",  
+        config={
+            "max_seq_length": 2048,
+            "lora_r":  args.r ,
+            "lora_alpha": args.alpha ,
+            "learning_rate": args.lr,
+            "padding_free":False, 
+            "per_device_train_batch_size":args.per_device_train_batch_size
+        },
+        tags=["aperture", "unsloth", "lora", args.name_data],  # Add tags for organization
+    )
     
     model_base, tokenizer_base = FastLanguageModel.from_pretrained(
         model_name = f"swiss-ai/Apertus-8B-2509",
@@ -110,7 +154,6 @@ if __name__ == "__main__":
     gc.collect()
 
     tokenizer = AutoTokenizer.from_pretrained(f"unsloth/Apertus-8B-Instruct-2509")
-    tokenizer.pad_token = tokenizer.eos_token 
     tokenizer.padding_side = 'right' # padding to right (otherwise SFTTrainer shows warning)
 
     data_train =data_train.map(apply_template)
@@ -119,10 +162,18 @@ if __name__ == "__main__":
         alpaca_data =alpaca_data.map(apply_template)
         data_train = concatenate_datasets([alpaca_data, data_train])
 
-    text = tokenizer.apply_chat_template(list(data_train["conversation"]), 
-                                        tokenize = False, 
-                                        add_special_tokens=False, 
-                                        enable_thinking=False)
+    special_tokens = [
+        "<|system_start|>", "<|system_end|>",
+        "<|user_start|>", "<|user_end|>",
+        "<|assistant_start|>", "<|assistant_end|>"
+    ]
+
+    tokenizer.add_special_tokens({"additional_special_tokens": special_tokens})
+    model_base.resize_token_embeddings(len(tokenizer))
+
+    text = [apply_custom_chat_template(conv) for conv in data_train["conversation"]]
+
+    #print(text)
 
     data = pd.DataFrame(text, columns=["text"])
 
@@ -130,10 +181,10 @@ if __name__ == "__main__":
 
     model = FastLanguageModel.get_peft_model(
         model_base,
-        r = 32,           # Choose any number > 0! Suggested 8, 16, 32, 64, 128
+        r = args.r ,           # Choose any number > 0! Suggested 8, 16, 32, 64, 128
         target_modules = ["q_proj", "k_proj", "v_proj", "o_proj",
                         "gate_proj", "up_proj", "down_proj",],
-        lora_alpha = 32,  # Best to choose alpha = rank or rank*2
+        lora_alpha = args.alpha ,  # Best to choose alpha = rank or rank*2
         lora_dropout = 0, # Supports any, but = 0 is optimized
         bias = "none",    # Supports any, but = "none" is optimized
         # [NEW] "unsloth" uses 30% less VRAM, fits 2x larger batch sizes!
@@ -141,6 +192,7 @@ if __name__ == "__main__":
         random_state = 3407,
         use_rslora = False,   # We support rank stabilized LoRA
         loftq_config = None,  # And LoftQ
+
     )
 
     print("Start SFT training")
@@ -152,8 +204,7 @@ if __name__ == "__main__":
         use_gradient_checkpointing = "unsloth" , # True or "unsloth" for very long context
         args = SFTConfig(
             dataset_text_field = "text",
-            per_device_train_batch_size = 16,
-            #gradient_accumulation_steps = 4, # Use GA to mimic batch size!
+            per_device_train_batch_size = args.per_device_train_batch_size,
             warmup_steps = 5,
             num_train_epochs = 3, # Set this for 1 full training run.
             max_steps = -1,  
@@ -172,7 +223,6 @@ if __name__ == "__main__":
             hub_model_id=f"{args.hf_id}/{name}", 
             hub_token=args.hf_token, 
             hub_strategy="all_checkpoints",
-            padding_free=True,
         ),
     )
 
