@@ -150,12 +150,11 @@ def detect_lg_and_refusal(data, checkpoint_name, model_name, detector_model, mod
         with torch.no_grad():
             print("Predictions with classifier")
             for ind, text in enumerate(data['output_clean']):
-                print(text)
-                output = detector_model(text)
-                print(output)
-                label = output[0]['label'].split('_')[-1]
-                print(label)
-                label = "0"
+                try:
+                    output = detector_model(text)
+                    label = output[0]['label'].split('_')[-1]
+                except:
+                    label = "0"
                 all_preds.append(int(label))
             print("End of predictions")
         
@@ -190,6 +189,8 @@ def detect_lg_and_refusal(data, checkpoint_name, model_name, detector_model, mod
 
 def compute_refusal(data, num_harmful, num_harmless, output_translated=False): 
 
+    print(data)
+
     data_harmful = data[data["label"]==1]
     data_harmless = data[data["label"]==0]
 
@@ -201,10 +202,14 @@ def compute_refusal(data, num_harmful, num_harmless, output_translated=False):
     language_counts_all_harmful = (data_harmful[data_harmful[col]==1].groupby(['language', 'language_response']).size() / num_harmful)*100
     if language_counts_all_harmful.empty: 
         language_counts_all_harmful=pd.Series(0)
+    
+    print(language_counts_all_harmful)
 
     language_counts_all_harmless = (data_harmless[data_harmless[col] == 1].groupby(['language', 'language_response']).size() /num_harmless)*100
     if language_counts_all_harmless.empty: 
         language_counts_all_harmless=pd.Series(0)
+    
+    print(language_counts_all_harmless)
 
     if "detector_v" in args.dist_type:  
         language_counts_all_harmful_incertain = (data_harmful[data_harmful[col]==2].groupby(['language', 'language_response']).size() / num_harmful)*100
@@ -258,7 +263,7 @@ def plot_results(df_aggr, file_name, model_name, path, num_harmful=200, num_harm
 
         axs[0].set_xlabel('Languages', fontsize=18)
         axs[0].set_ylim(0,100)
-        axs[0].set_ylabel(f'% of refusals (over {num_harmful} {args.data_type} prompts)', fontsize=18)
+        axs[0].set_ylabel(f'% of refusals (over {num_harmful} prompts)', fontsize=18)
         axs[0].set_title('Refusals for harmful prompts',  fontsize=18)
         axs[0].tick_params(axis='both', which='major', labelsize=18)
   
@@ -267,7 +272,7 @@ def plot_results(df_aggr, file_name, model_name, path, num_harmful=200, num_harm
 
         axs.set_xlabel('Languages', labelsize=18)
         axs.set_ylim(0,100)
-        axs.set_ylabel(f'% of refusals (over {num_harmful} {args.data_type} prompts)', labelsize=18)
+        axs.set_ylabel(f'% of refusals (over {num_harmful} prompts)', labelsize=18)
         axs.set_title('Refusals for harmful prompts',  fontsize=18)
         axs[0].tick_params(axis='both', which='major', labelsize=18)
 
@@ -296,12 +301,12 @@ def plot_results(df_aggr, file_name, model_name, path, num_harmful=200, num_harm
 
         axs[1].set_xlabel('Languages', fontsize=18)
         axs[1].set_ylim(0,100)
-        axs[1].set_ylabel(f'% of refusals (over {num_harmless} {args.data_type} prompts)', fontsize=18)
+        axs[1].set_ylabel(f'% of refusals (over {num_harmless}  prompts)', fontsize=18)
         axs[1].set_title('Refusals for harmless prompts', fontsize=18)
         axs[1].tick_params(axis='both', which='major', labelsize=18)
   
 
-    fig.suptitle(f'Number of refusals with {file_name} for {args.data_type} prompts')
+    fig.suptitle(f'Number of refusals with {file_name} for prompts')
 
     plt.legend(title='Refusal Lg', bbox_to_anchor=(1.0, 1.0), loc='upper left', fontsize=15, title_fontsize=15)
 
@@ -365,7 +370,7 @@ def plot_results(df_aggr, file_name, model_name, path, num_harmful=200, num_harm
 
     axs[0].set_xlabel('Languages', fontsize=18)
     axs[0].set_ylim(0,100)
-    axs[0].set_ylabel(f'% of refusals (over {num_harmful} {args.data_type} prompts)', fontsize=18)
+    axs[0].set_ylabel(f'% of refusals (over {num_harmful} prompts)', fontsize=18)
     axs[0].set_title('Refusals for harmful prompts', fontsize=18)
     axs[0].tick_params(axis='both', which='major', labelsize=18)
 
@@ -373,11 +378,11 @@ def plot_results(df_aggr, file_name, model_name, path, num_harmful=200, num_harm
 
     axs[1].set_xlabel('Languages', fontsize=18)
     axs[1].set_ylim(0,100)
-    axs[1].set_ylabel(f'% of refusals (over {num_harmless} {args.data_type} prompts)', fontsize=18)
+    axs[1].set_ylabel(f'% of refusals (over {num_harmless} prompts)', fontsize=18)
     axs[1].set_title('Refusals for harmless prompts', fontsize=18)
     axs[1].tick_params(axis='both', which='major', labelsize=18)
 
-    fig.suptitle(f'Number of refusals with {file_name} for {args.data_type} prompts')
+    fig.suptitle(f'Number of refusals with {file_name} for prompts')
 
     plt.legend(bbox_to_anchor=(1.0, 1.0), loc='upper left', fontsize=15, title_fontsize=15)
 
@@ -635,6 +640,7 @@ if __name__ == "__main__":
                     
                     compute_refusal_and_plot(data_with_refusal, num_harmful, num_harmless, output_translated, checkpoint_name, lg, path_lg, d_type)
 
+                    """
                     if output_translated==False:
                         # Translation 
                         max_seq_length = 2048  # Choose any! Unsloth auto-supports RoPE scaling
@@ -665,7 +671,7 @@ if __name__ == "__main__":
                         data_with_translation = data_with_translation[(data_with_translation['data_type']!='privacy_fictional')]
                         data_with_refusal = detect_lg_and_refusal(data_with_translation, checkpoint_name, lg, detector_model,  pipe_detection_lg, df_path_translation_with_refusal, output_translated)
                         data_with_refusal = remove_rephrase_sentence(data_with_refusal, df_path_translation_wo_refusal)
-
+                        
                         # plot 
                         compute_refusal_and_plot(data_with_refusal, num_harmful, num_harmless, output_translated, checkpoint_name, lg, path_lg, d_type)
-
+                        """
