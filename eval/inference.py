@@ -54,7 +54,7 @@ def parse_arguments():
     parser.add_argument(
         '--checkpoint', 
         type=str, 
-        default="checkpoint-3988")
+        default="checkpoint-997")
     parser.add_argument(
         '--name_data', 
         type=str, 
@@ -62,7 +62,7 @@ def parse_arguments():
     parser.add_argument(
         '--lr', 
         type=int, 
-        default=8e-4)
+        default=2e-4)
     parser.add_argument(
         '--training_type', 
         type=str, 
@@ -101,7 +101,7 @@ if __name__ == "__main__":
             data_eval = data_eval.drop(col, axis=1)
 
     if args.add_alpaca==True: 
-        model_name = f"{args.model_name}-Base_{args.name_data}_alpaca_{args.alpaca_ratio}_part_{args.training_type}_LoRA_{args.lr}_new_chat_template_wo_pf"
+        model_name = f"{args.model_name}-Base_{args.name_data}_alpaca_{args.alpaca_ratio}_part_{args.training_type}_LoRA_{args.lr}_test"
     else : 
         model_name = f"{args.model_name}-Base_{args.name_data}_{args.training_type}_LoRA_{args.lr}"
 
@@ -152,31 +152,31 @@ if __name__ == "__main__":
     ### process data
     data_high_bs, data_low_bs = preprocess_data(data_eval)
 
-    text_low = [apply_custom_chat_template(conv) for conv in list(data_low_bs['conversation'])]
+    #text_low = [apply_custom_chat_template(conv) for conv in list(data_low_bs['conversation'])]
 
 
-    #text_low = tokenizer.apply_chat_template(
-    #    list(data_low_bs['conversation']),
-    #    tokenize = False,
-    #    add_generation_prompt = True, # Must add for generation
-    #    enable_thinking = False, # Disable thinking
-    #)
+    text_low = tokenizer.apply_chat_template(
+        list(data_low_bs['conversation']),
+        tokenize = False,
+        add_generation_prompt = True, # Must add for generation
+        enable_thinking = False, # Disable thinking
+    )
 
     data_low_bs = data_low_bs.add_column("text", text_low) 
 
-    #text_high = tokenizer.apply_chat_template(
-    #    list(data_high_bs['conversation']),
-    #    tokenize = False,
-    #    add_generation_prompt=True, # Must add for generation
-    #    enable_thinking = False, # Disable thinking
-    #)
+    text_high = tokenizer.apply_chat_template(
+        list(data_high_bs['conversation']),
+        tokenize = False,
+        add_generation_prompt=True, # Must add for generation
+        enable_thinking = False, # Disable thinking
+    )
 
-    text_high = [apply_custom_chat_template(conv) for conv in list(data_high_bs['conversation'])]
+    #text_high = [apply_custom_chat_template(conv) for conv in list(data_high_bs['conversation'])]
 
     data_high_bs = data_high_bs.add_column("text", text_high)   
 
-    bs_high = 32
-    bs_low = 4
+    bs_high = 128
+    bs_low = 16
 
     data_loader_high_bs = DataLoader(data_high_bs, batch_size=bs_high, shuffle=False)
     data_loader_low_bs = DataLoader(data_low_bs, batch_size=bs_low, shuffle=False)
@@ -214,7 +214,7 @@ if __name__ == "__main__":
             )
 
             output_ids_list=[generated_ids[i][len(model_inputs.input_ids[i]):].tolist() for i in range(len(generated_ids))]
-            output_ids_list = [[token for token in ids if token != 1] for ids in output_ids_list]
+            output_ids_list = [[token for token in ids if token != 68] for ids in output_ids_list]
             output = [tokenizer.decode(output_ids) for output_ids in output_ids_list]
             print(output)
 
@@ -244,7 +244,7 @@ if __name__ == "__main__":
             )
 
             output_ids_list = [generated_ids[i][len(model_inputs.input_ids[i]):].tolist() for i in range(len(generated_ids))]
-            output_ids_list = [[token for token in ids if token != 1] for ids in output_ids_list]
+            output_ids_list = [[token for token in ids if token != 68] for ids in output_ids_list]
             output = [tokenizer.decode(output_ids) for output_ids in output_ids_list if output_ids != 0]
 
             print(output)

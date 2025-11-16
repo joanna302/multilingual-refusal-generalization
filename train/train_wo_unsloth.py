@@ -42,15 +42,19 @@ def parse_arguments():
     parser.add_argument(
         '--per_device_train_batch_size', 
         type=int, 
-        default=16)
+        default=32)
+    parser.add_argument(
+        '--gradient_accumulation_steps', 
+        type=int, 
+        default=4)
     parser.add_argument(
         '--r', 
         type=int, 
-        default=32)
+        default=16)
     parser.add_argument(
         '--alpha', 
         type=int, 
-        default=32)
+        default=16)
     parser.add_argument(
         '--seed', 
         type=int, 
@@ -138,14 +142,14 @@ if __name__ == "__main__":
             "learning_rate": args.lr,
             "padding_free":False, 
             "per_device_train_batch_size":args.per_device_train_batch_size, 
+            "gradient_accumulation_steps":args.gradient_accumulation_steps,
             "use_unsloth":False,
         },
         tags=["aperture", "unsloth", "lora", args.name_data],  # Add tags for organization
     )
     
     model_base = AutoModelForCausalLM.from_pretrained(
-        model_name = f"swiss-ai/Apertus-8B-2509",
-        max_seq_length = 2048,   # Context length - can be longer, but uses more memory
+        pretrained_model_name_or_path = f"swiss-ai/Apertus-8B-2509",
         load_in_4bit = True,     # 4bit uses much less memory
         device_map='auto', 
     )
@@ -172,34 +176,32 @@ if __name__ == "__main__":
 
     text = [apply_custom_chat_template(conv) for conv in data_train["conversation"]]
 
-    #print(text)
-
     data = pd.DataFrame(text, columns=["text"])
 
     dataset = Dataset.from_pandas(data)
 
-    model = get_peft_model(
-        model_base,
+    config = LoraConfig(
         r = args.r ,           # Choose any number > 0! Suggested 8, 16, 32, 64, 128
         target_modules = ["q_proj", "k_proj", "v_proj", "o_proj",
                         "gate_proj", "up_proj", "down_proj",],
         lora_alpha = args.alpha ,  # Best to choose alpha = rank or rank*2
         lora_dropout = 0, # Supports any, but = 0 is optimized
         bias = "none",    # Supports any, but = "none" is optimized
-        random_state = 3407,
         task_type="CAUSAL_LM"
     )
+
+    model = get_peft_model(model_base,config)
 
     print("Start SFT training")
 
     trainer = SFTTrainer(
         model = model,
-        tokenizer = tokenizer,
+        processing_class = tokenizer,
         train_dataset = dataset,
-        use_gradient_checkpointing = True , # True or "unsloth" for very long context
         args = SFTConfig(
             dataset_text_field = "text",
             per_device_train_batch_size = args.per_device_train_batch_size,
+            gradient_accumulation_steps=args.gradient_accumulation_steps,
             warmup_steps = 5,
             num_train_epochs = 2, # Set this for 1 full training run.
             max_steps = -1,  

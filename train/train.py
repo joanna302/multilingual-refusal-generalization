@@ -39,7 +39,7 @@ def parse_arguments():
     parser.add_argument(
         '--lr', 
         type=float, 
-        default=2e-4)
+        default=1e-4)
     parser.add_argument(
         '--per_device_train_batch_size', 
         type=int, 
@@ -98,9 +98,7 @@ def apply_custom_chat_template(conversation):
 
     return text
 
-# Apply to your
 
-    
 if __name__ == "__main__": 
 
     args = parse_arguments()
@@ -125,7 +123,7 @@ if __name__ == "__main__":
         alpaca_data = Dataset.from_pandas(alpaca_data.rename({"output":"chosen_response"}, axis=1))
 
     if args.add_alpaca==True: 
-        name = f"Apertus-8B-Base_{args.name_data}_alpaca_{args.alpaca_ratio}_part_{args.training_type}_LoRA_{args.lr}_test"
+        name = f"Apertus-8B-Base_{args.name_data}_alpaca_{args.alpaca_ratio}_part_{args.training_type}_LoRA_{args.lr}"
     else : 
         name = f"Apertus-8B-Base_{args.name_data}_{args.training_type}_{args.lr}"
 
@@ -138,7 +136,8 @@ if __name__ == "__main__":
             "lora_alpha": args.alpha ,
             "learning_rate": args.lr,
             "padding_free":False, 
-            "per_device_train_batch_size":args.per_device_train_batch_size
+            "per_device_train_batch_size":args.per_device_train_batch_size, 
+            "chat_template":"Apertus"
         },
         tags=["aperture", "unsloth", "lora", args.name_data],  # Add tags for organization
     )
@@ -162,18 +161,24 @@ if __name__ == "__main__":
         alpaca_data =alpaca_data.map(apply_template)
         data_train = concatenate_datasets([alpaca_data, data_train])
 
-    special_tokens = [
-        "<|system_start|>", "<|system_end|>",
-        "<|user_start|>", "<|user_end|>",
-        "<|assistant_start|>", "<|assistant_end|>"
-    ]
+    #special_tokens = [
+    #    "<|system_start|>", "<|system_end|>",
+    #    "<|user_start|>", "<|user_end|>",
+    #    "<|assistant_start|>", "<|assistant_end|>"
+    #]
 
-    tokenizer.add_special_tokens({"additional_special_tokens": special_tokens})
-    model_base.resize_token_embeddings(len(tokenizer))
+    #tokenizer.add_special_tokens({"additional_special_tokens": special_tokens})
+    #model_base.resize_token_embeddings(len(tokenizer))
 
-    text = [apply_custom_chat_template(conv) for conv in data_train["conversation"]]
+    #text = [apply_custom_chat_template(conv) for conv in data_train["conversation"]]
 
-    #print(text)
+
+    text = tokenizer.apply_chat_template(list(data_train["conversation"]), 
+                                        tokenize = False, 
+                                        add_special_tokens=False, 
+                                        enable_thinking=False)
+    
+    print(text)
 
     data = pd.DataFrame(text, columns=["text"])
 
