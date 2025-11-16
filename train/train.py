@@ -161,24 +161,26 @@ if __name__ == "__main__":
         alpaca_data =alpaca_data.map(apply_template)
         data_train = concatenate_datasets([alpaca_data, data_train])
 
-    #special_tokens = [
-    #    "<|system_start|>", "<|system_end|>",
-    #    "<|user_start|>", "<|user_end|>",
-    #    "<|assistant_start|>", "<|assistant_end|>"
-    #]
+    special_tokens = [
+        "<|system_start|>", "<|system_end|>",
+        "<|user_start|>", "<|user_end|>",
+        "<|assistant_start|>", "<|assistant_end|>", 
+        "<s>", "<pad>"
+    ]
 
-    #tokenizer.add_special_tokens({"additional_special_tokens": special_tokens})
-    #model_base.resize_token_embeddings(len(tokenizer))
+    tokenizer.add_special_tokens({"additional_special_tokens": special_tokens})
+    model_base.resize_token_embeddings(len(tokenizer))
 
     #text = [apply_custom_chat_template(conv) for conv in data_train["conversation"]]
 
-
     text = tokenizer.apply_chat_template(list(data_train["conversation"]), 
-                                        tokenize = False, 
-                                        add_special_tokens=False, 
+                                        tokenize=False, 
+                                        add_special_tokens=True, 
                                         enable_thinking=False)
     
-    print(text)
+    text = [t+tokenizer.eos_token for t in text]
+    
+    print(text[0])
 
     data = pd.DataFrame(text, columns=["text"])
 
@@ -211,7 +213,7 @@ if __name__ == "__main__":
             dataset_text_field = "text",
             per_device_train_batch_size = args.per_device_train_batch_size,
             warmup_steps = 5,
-            num_train_epochs = 2, # Set this for 1 full training run.
+            num_train_epochs = 3, # Set this for 1 full training run.
             max_steps = -1,  
             learning_rate = args.lr, # 2e-4 = high lr / 2e-5 = low lr / 8e-5 = middle lr 
             logging_steps = 1,
