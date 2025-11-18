@@ -39,7 +39,7 @@ def parse_arguments():
     parser.add_argument(
         '--lr', 
         type=float, 
-        default=1e-4)
+        default=8e-4)
     parser.add_argument(
         '--per_device_train_batch_size', 
         type=int, 
@@ -67,7 +67,7 @@ def parse_arguments():
     parser.add_argument(
         '--alpaca_ratio', 
         type=float, 
-        default=1)
+        default=0)
     return parser.parse_args()
 
 
@@ -137,7 +137,8 @@ if __name__ == "__main__":
             "learning_rate": args.lr,
             "padding_free":False, 
             "per_device_train_batch_size":args.per_device_train_batch_size, 
-            "chat_template":"Apertus"
+            "chat_template":"Apertus", 
+            "warmup_ratio":0.03
         },
         tags=["aperture", "unsloth", "lora", args.name_data],  # Add tags for organization
     )
@@ -212,9 +213,9 @@ if __name__ == "__main__":
         args = SFTConfig(
             dataset_text_field = "text",
             per_device_train_batch_size = args.per_device_train_batch_size,
-            warmup_steps = 5,
-            num_train_epochs = 3, # Set this for 1 full training run.
-            max_steps = -1,  
+            warmup_ratio=0.03,
+            num_train_epochs=3, # Set this for 1 full training run.
+            max_steps=-1,  
             learning_rate = args.lr, # 2e-4 = high lr / 2e-5 = low lr / 8e-5 = middle lr 
             logging_steps = 1,
             optim = "adamw_8bit",
@@ -225,7 +226,7 @@ if __name__ == "__main__":
             report_to = "wandb", # Use this for WandB etc
             #eval_strategy="steps", 
             save_strategy="steps", 
-            save_steps=1/4, 
+            save_steps=1/6, 
             push_to_hub=True, 
             hub_model_id=f"{args.hf_id}/{name}", 
             hub_token=args.hf_token, 
