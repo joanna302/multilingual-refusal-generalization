@@ -20,19 +20,14 @@ def chat_template(example):
     ]
     return {"conversation": conversation}
 
-def get_activations(model, instructions, tokenizer, prompt_type="vanilla", batch_size=32, layer_idx=-1, token_idx=-1):
+def get_activations(model, instructions, tokenize_instructions_fn, prompt_type="vanilla", batch_size=32, layer_idx=-1, token_idx=-1):
     last_activations= None
 
     instructions=list(instructions[prompt_type])
 
     for i in range(0, len(instructions), batch_size):
-        tokenized_instructions = tokenizer(
-                instructions[i:i+batch_size], 
-                return_tensors="pt", 
-                padding=True, 
-                truncation=True,
-            ).to(model.device)
-        
+        tokenized_instructions = tokenize_instructions_fn(instructions=instructions[i:i+batch_size])
+
         with torch.no_grad(): 
             outputs = model(
                 input_ids=tokenized_instructions.input_ids.to(model.device),

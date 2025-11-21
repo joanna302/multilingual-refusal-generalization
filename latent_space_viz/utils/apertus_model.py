@@ -4,6 +4,7 @@ import os
 
 from torch import Tensor
 from transformers import AutoTokenizer, AutoModelForCausalLM
+from peft import PeftModel
 from typing import List
 from torch import Tensor
 from jaxtyping import Int, Float
@@ -129,6 +130,24 @@ class ApertusModel(ModelBase):
                 cache_dir=os.getenv("HUGGINGFACE_CACHE_DIR"),
                 subfolder=f"{checkpoint}",
             ).eval()
+
+        model.requires_grad_(False) 
+
+        return model
+
+    def _load_model_LoRA(self, model_path, model_path_lora, checkpoint=False, dtype=torch.bfloat16):
+        # Load base model
+        model_base = AutoModelForCausalLM.from_pretrained(
+            pretrained_model_name_or_path=model_path,  # Base model
+            load_in_4bit=False, 
+            dtype=None).eval()
+        
+        # Load LoRA adapter directly
+        model = PeftModel.from_pretrained(
+            model_base,
+            model_path_lora,
+            subfolder=checkpoint 
+        ).eval()
 
         model.requires_grad_(False) 
 

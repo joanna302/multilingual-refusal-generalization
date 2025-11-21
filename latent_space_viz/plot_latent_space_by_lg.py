@@ -17,12 +17,14 @@ from mpl_toolkits.mplot3d import Axes3D
 
 from utils.utils import load_harmful_harmless_datasets, filter_data, get_refusal_scores_detector
 from utils.process_activations import  get_activations, compute_and_plot_reduction_with_refusal, compute_and_plot_reduction_with_classifier
+from utils.apertus_model import ApertusModel
 
 def parse_arguments():
     """Parse model path argument from command line."""
     load_dotenv("..", override=True)
     parser = argparse.ArgumentParser(description="Parse model path argument.")
     parser.add_argument('--model_path', type=str, required=True, help='Path to the model')
+    parser.add_argument('--model_path_lora', type=str, required=False, help='Path to the lora model')
     parser.add_argument('--checkpoint', type=str, default='checkpoint-3988')
     parser.add_argument('--prompts_type', type=str, default='vanilla')
     return parser.parse_args()
@@ -93,8 +95,8 @@ def compute_and_plot(model_base, path, prompts_type, checkpoint, list_lg, layer=
 
         if not os.path.exists(f"{path_activations}/activation_harmful_{lg}.pt"):  
             print(f"Compute activations {lg}")
-            activation_harmful_lg = get_activations(model, harmful_data, tokenizer, prompts_type)
-            activation_harmless_lg = get_activations(model, harmless_data, tokenizer, prompts_type)
+            activation_harmful_lg = get_activations(model_base.model, harmful_data, model_base.tokenize_instructions_fn, prompts_type)
+            activation_harmless_lg = get_activations(model_base.model, harmless_data, model_base.tokenize_instructions_fn, prompts_type)
             torch.save(activation_harmful_lg, f"{path_activations}/activation_harmful_{lg}.pt")
             torch.save(activation_harmless_lg, f"{path_activations}/activation_harmless_{lg}.pt")
 
@@ -113,7 +115,7 @@ def compute_and_plot(model_base, path, prompts_type, checkpoint, list_lg, layer=
             print("Compute activations refusal")
             if not os.path.exists(f"{path}/activations/{checkpoint}/harmful_data_{lg}_filtered.json"):  
                 print("Filter data")
-                harmful_data_filtered, harmless_data_filtered = filter_data(model_base, tokenizer, harmful_data, harmless_data, detector_model)
+                harmful_data_filtered, harmless_data_filtered = filter_data(model_base, model_base.tokenize_instructions_fn, harmful_data, harmless_data, detector_model)
                 with open(f"{path_activations}/harmful_data_{lg}_filtered.json", "w") as js :
                     json.dump(harmful_data_filtered, js)
                 with open(f"{path_activations}/harmless_data_{lg}_filtered.json", "w") as js :
@@ -174,21 +176,7 @@ if __name__ == "__main__":
     model_alias = os.path.basename(args.model_path)
 
     #model_base = AutoModelForCausalLM.from_pretrained(args.model_path, subfolder=f"{args.checkpoint}").to('cuda') 
-
-    # Load base model
-    model_base = AutoModelForCausalLM.from_pretrained(
-        pretrained_model_name_or_path="swiss-ai/Apertus-8B-2509",  # Base model
-        load_in_4bit=False, 
-        dtype=None )
-    
-    tokenizer = AutoTokenizer.from_pretrained(f"unsloth/Apertus-8B-Instruct-2509")
-
-    # Load LoRA adapter directly
-    model = PeftModel.from_pretrained(
-        model_base,
-        f"{args.model_path}",
-        subfolder=args.checkpoint if args.checkpoint else None
-    )
+    model = ApertusModel(args.model_path, args.model_path_lora, args.checkpoint) 
 
     detector_model = pipeline("text-classification", model="joanna302/refusal_detector_v6") 
 
@@ -201,4 +189,4 @@ if __name__ == "__main__":
 
     #list_lg = ['de', 'bn', 'ar', 'jv', 'es', 'mk', 'sw', 'tt', 'fr', 'ja', 'pt', 'el', 'zh', 'en','da', 'lo', 'pag','mt']
 
-    compute_and_plot(model_base, path_to_save, args.prompts_type, args.checkpoint, list_lg, layer=-1)
+    compute_and_plot(model, path_to_save, args.prompts_type, args.checkpoint, list_lg, layer=-1)

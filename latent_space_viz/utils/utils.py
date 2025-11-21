@@ -22,7 +22,7 @@ def load_dataset(harmtype: str, lg='all', data_type='train', prompts_type="vanil
 
     return dataset
 
-def filter_data(model, tokenizer, harmful_train, harmless_train, detector_model):
+def filter_data(model, harmful_train, harmless_train, detector_model):
     """
     Filter datasets based on refusal scores.
     """
@@ -31,8 +31,8 @@ def filter_data(model, tokenizer, harmful_train, harmless_train, detector_model)
     print(f"Number of harmful examples: {len(harmful_train)}")
     print(f"Number of harmless examples: {len(harmless_train)}")
 
-    harmful_train_scores = get_refusal_scores_detector(model, harmful_train, tokenizer, detector_model)
-    harmless_train_scores = get_refusal_scores_detector(model, harmless_train, tokenizer, detector_model)
+    harmful_train_scores = get_refusal_scores_detector(model.model, harmful_train, model.tokenize_instructions_fn, model.tokenizer, detector_model)
+    harmless_train_scores = get_refusal_scores_detector(model.model, harmless_train, model.tokenize_instructions_fn, model.tokenizer, detector_model)
     
     print(len([score for score in harmful_train_scores.tolist() if score == 1]))
     print(len([score for score in harmless_train_scores.tolist() if score == 0]))
@@ -47,20 +47,14 @@ def filter_data(model, tokenizer, harmful_train, harmless_train, detector_model)
     return harmful_train, harmless_train
 
 
-def get_refusal_scores_detector(model, instructions, tokenizer, model_detection, prompt_type="vanilla", fwd_pre_hooks=[], fwd_hooks=[], batch_size=64):
+def get_refusal_scores_detector(model, instructions, tokenize_instructions_fn, tokenizer, model_detection, prompt_type="vanilla", fwd_pre_hooks=[], fwd_hooks=[], batch_size=64):
  
     refusal_scores = torch.zeros(len(instructions), device=model.device)
 
     instructions=list(instructions[prompt_type])
 
     for i in range(0, len(instructions), batch_size):
-        tokenized_instructions = tokenizer(
-                instructions[i:i+batch_size], 
-                return_tensors="pt", 
-                padding=True, 
-                truncation=True,
-            ).to(model.device)
-
+        tokenized_instructions = tokenize_instructions_fn(instructions=instructions[i:i+batch_size]).to(model.device)
         with add_hooks(module_forward_pre_hooks=fwd_pre_hooks, module_forward_hooks=fwd_hooks):
             generated_ids = model.generate(
                 input_ids=tokenized_instructions.input_ids.to(model.device),
