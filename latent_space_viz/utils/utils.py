@@ -65,7 +65,6 @@ def get_refusal_scores_detector(model, instructions, tokenize_instructions_fn, t
             output_ids_list = [generated_ids[i][len(tokenized_instructions.input_ids[i]):].tolist() for i in range(len(generated_ids))]
 
             text_generated = [tokenizer.decode(output_ids, skip_special_tokens=True) for output_ids in output_ids_list]
-
             print(text_generated)
             cleaned_text = [extract_generated_sentence(x) for x in text_generated]
 
