@@ -54,15 +54,15 @@ def parse_arguments():
     parser.add_argument(
         '--checkpoint', 
         type=str, 
-        default="checkpoint-997")
+        default="checkpoint-1316")
     parser.add_argument(
         '--name_data', 
         type=str, 
-        default="en")
+        default="en_with_more_wj_benign")
     parser.add_argument(
         '--lr', 
         type=int, 
-        default=2e-4)
+        default=8e-4)
     parser.add_argument(
         '--training_type', 
         type=str, 
@@ -70,7 +70,7 @@ def parse_arguments():
     parser.add_argument(
         '--alpaca_ratio', 
         type=float, 
-        default=1)
+        default=0)
     parser.add_argument(
         '--add_alpaca', 
         type=bool, 
@@ -101,7 +101,7 @@ if __name__ == "__main__":
             data_eval = data_eval.drop(col, axis=1)
 
     if args.add_alpaca==True: 
-        model_name = f"{args.model_name}-Base_{args.name_data}_alpaca_{args.alpaca_ratio}_part_{args.training_type}_LoRA_{args.lr}_test"
+        model_name = f"{args.model_name}-Base_{args.name_data}_alpaca_{args.alpaca_ratio}_part_{args.training_type}_LoRA_{args.lr}"
     else : 
         model_name = f"{args.model_name}-Base_{args.name_data}_{args.training_type}_LoRA_{args.lr}"
 

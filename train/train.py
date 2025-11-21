@@ -29,7 +29,7 @@ def parse_arguments():
     parser.add_argument(
         '--name_data', 
         type=str, 
-        default="en_10")
+        default="en_wo_WJ")
     parser.add_argument(
         '--hf_id', 
         type=str)

@@ -4,17 +4,16 @@ import torch
 import pandas as pd 
 import os 
 
-from ...eval.eval_results import extract_generated_sentence
 from utils.hook_utils import add_hooks, get_activation_addition_input_pre_hook, get_direction_ablation_input_pre_hook, get_direction_ablation_output_hook
 
 PATH = "{root_path}/{prompts_type}/{data_type}/data_{harmtype}_{lg}.csv"
 
 def load_harmful_harmless_datasets(lg=False, prompts_type="vanilla"):
-    harmful_data = load_dataset(harmtype='harmful', instructions_only=True, lg=lg, data_type='train', prompts_type=prompts_type)
-    harmless_data = load_dataset(harmtype='harmless', instructions_only=True, lg=lg, data_type='train',  prompts_type=prompts_type)
+    harmful_data = load_dataset(harmtype='harmful', lg=lg, data_type='train', prompts_type=prompts_type)
+    harmless_data = load_dataset(harmtype='harmless', lg=lg, data_type='train',  prompts_type=prompts_type)
     return harmful_data, harmless_data
 
-def load_dataset(harmtype: str, lg='all', data_type='train', prompts_type="vanilla", path="data"):
+def load_dataset(harmtype: str, lg='all', data_type='train', prompts_type="vanilla", path="data_lg"):
 
     file_path = PATH.format(root_path=path, data_type=data_type, harmtype=harmtype, lg=lg, prompts_type=prompts_type)
     dataset = pd.read_csv(file_path)
@@ -23,7 +22,7 @@ def load_dataset(harmtype: str, lg='all', data_type='train', prompts_type="vanil
 
     return dataset
 
-def filter_data(model_base, harmful_train, harmless_train, detector_model):
+def filter_data(model, tokenizer, harmful_train, harmless_train, detector_model):
     """
     Filter datasets based on refusal scores.
     """
@@ -32,8 +31,8 @@ def filter_data(model_base, harmful_train, harmless_train, detector_model):
     print(f"Number of harmful examples: {len(harmful_train)}")
     print(f"Number of harmless examples: {len(harmless_train)}")
 
-    harmful_train_scores = get_refusal_scores_detector(model_base.model, harmful_train, model_base.tokenize_instructions_fn, model_base.tokenizer, detector_model)
-    harmless_train_scores = get_refusal_scores_detector(model_base.model, harmless_train, model_base.tokenize_instructions_fn, model_base.tokenizer, detector_model)
+    harmful_train_scores = get_refusal_scores_detector(model, harmful_train, tokenizer, detector_model)
+    harmless_train_scores = get_refusal_scores_detector(model, harmless_train, tokenizer, detector_model)
     
     print(len([score for score in harmful_train_scores.tolist() if score == 1]))
     print(len([score for score in harmless_train_scores.tolist() if score == 0]))
@@ -48,12 +47,20 @@ def filter_data(model_base, harmful_train, harmless_train, detector_model):
     return harmful_train, harmless_train
 
 
-def get_refusal_scores_detector(model, instructions, tokenize_instructions_fn, tokenizer, model_detection, fwd_pre_hooks=[], fwd_hooks=[], batch_size=16):
+def get_refusal_scores_detector(model, instructions, tokenizer, model_detection, prompt_type="vanilla", fwd_pre_hooks=[], fwd_hooks=[], batch_size=64):
  
     refusal_scores = torch.zeros(len(instructions), device=model.device)
 
+    instructions=list(instructions[prompt_type])
+
     for i in range(0, len(instructions), batch_size):
-        tokenized_instructions = tokenize_instructions_fn(instructions=instructions[i:i+batch_size]).to(model.device)
+        tokenized_instructions = tokenizer(
+                instructions[i:i+batch_size], 
+                return_tensors="pt", 
+                padding=True, 
+                truncation=True,
+            ).to(model.device)
+
         with add_hooks(module_forward_pre_hooks=fwd_pre_hooks, module_forward_hooks=fwd_hooks):
             generated_ids = model.generate(
                 input_ids=tokenized_instructions.input_ids.to(model.device),
@@ -65,6 +72,7 @@ def get_refusal_scores_detector(model, instructions, tokenize_instructions_fn, t
 
             text_generated = [tokenizer.decode(output_ids, skip_special_tokens=True) for output_ids in output_ids_list]
 
+            print(text_generated)
             cleaned_text = [extract_generated_sentence(x) for x in text_generated]
 
         outputs_refusal = model_detection(cleaned_text)
@@ -76,3 +84,15 @@ def get_refusal_scores_detector(model, instructions, tokenize_instructions_fn, t
     print(refusal_scores)
 
     return refusal_scores
+
+def extract_generated_sentence(text):
+    try:
+        segments = re.split(r'(?=</think>|<think>|<\|user_end\|>|<\|assistant_start\|>|"<end_of_turn>"|"<\|im_end\|>")', text)
+    except:    
+        segments=[]
+    for segment in segments:
+            if segment.strip() not in ["</think>","<think>", "assistant", "user", ".", ",", "!", "?", ";", ":" , "<|im_end|>", "<|im_start|>", "<end_of_turn>", "<pad>",  "<|vision_pad|>", "<|user_end|>","<|assistant_start|>"] and len(segment.strip())>0: 
+                for w in ["</think>","<think>", "<|im_end|>", "<|im_start|>", "<end_of_turn>", "<pad>",  "<|vision_pad|>", "<|user_end|>","<|assistant_start|>"]: 
+                    segment = segment.replace(w, "") 
+                return segment.strip()
+    return " "

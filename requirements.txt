@@ -13,3 +13,5 @@ seaborn
 langcodes
 iso639-lang
 fasttext
+dotenv
+jaxtyping

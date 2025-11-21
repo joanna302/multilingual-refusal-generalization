@@ -2,7 +2,6 @@ import torch
 from sklearn.decomposition import PCA
 from sklearn.manifold import TSNE
 import matplotlib.pyplot as plt 
-import umap 
 import json
 import numpy as np 
 from scipy.spatial.distance import cdist
@@ -13,13 +12,27 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import roc_auc_score
 
+def chat_template(example):
+    prompt_type = "vanilla"
+    print(example[prompt_type])
+    conversation = [
+        {"role": "user", "content": example[prompt_type]}
+    ]
+    return {"conversation": conversation}
 
-def get_activations(model, instructions, tokenize_instructions_fn, batch_size=4, layer_idx=-1, token_idx=-1):
+def get_activations(model, instructions, tokenizer, prompt_type="vanilla", batch_size=32, layer_idx=-1, token_idx=-1):
     last_activations= None
 
-    for i in range(0, len(instructions), batch_size):
-        tokenized_instructions = tokenize_instructions_fn(instructions=instructions[i:i+batch_size])
+    instructions=list(instructions[prompt_type])
 
+    for i in range(0, len(instructions), batch_size):
+        tokenized_instructions = tokenizer(
+                instructions[i:i+batch_size], 
+                return_tensors="pt", 
+                padding=True, 
+                truncation=True,
+            ).to(model.device)
+        
         with torch.no_grad(): 
             outputs = model(
                 input_ids=tokenized_instructions.input_ids.to(model.device),
@@ -33,7 +46,6 @@ def get_activations(model, instructions, tokenize_instructions_fn, batch_size=4,
             last_activations = activations
         else:
             last_activations = torch.cat((last_activations, activations), dim=0)
-    
 
     return last_activations
 

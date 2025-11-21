@@ -111,9 +111,10 @@ def language_id_to_iso(language_id):
 
 
 def extract_generated_sentence(text):
-
-    segments = re.split(r'(?=</think>|<think>|<\|user_end\|>|<\|assistant_start\|>|"<end_of_turn>"|"<\|im_end\|>")', text)
-    
+    try:
+        segments = re.split(r'(?=</think>|<think>|<\|user_end\|>|<\|assistant_start\|>|"<end_of_turn>"|"<\|im_end\|>")', text)
+    except:    
+        segments=[]
     for segment in segments:
             if segment.strip() not in ["</think>","<think>", "assistant", "user", ".", ",", "!", "?", ";", ":" , "<|im_end|>", "<|im_start|>", "<end_of_turn>", "<pad>",  "<|vision_pad|>", "<|user_end|>","<|assistant_start|>"] and len(segment.strip())>0: 
                 for w in ["</think>","<think>", "<|im_end|>", "<|im_start|>", "<end_of_turn>", "<pad>",  "<|vision_pad|>", "<|user_end|>","<|assistant_start|>"]: 
