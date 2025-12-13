@@ -60,11 +60,6 @@ def compute_and_plot_reduction(act_refusal, act_nn_refusal, dir, lg1, dist, redu
         X_embedded = pca.fit_transform(X)
     elif reduction_type=='tsne': 
         X_embedded = TSNE(n_components=n_compo, perplexity=30, random_state=42).fit_transform(X)
-    elif reduction_type=='umap-supervised': 
-        X_embedded = umap.UMAP(random_state=42).fit_transform(X, y=y_numeric)
-    elif reduction_type=='umap-unsupervised': 
-        X_embedded = umap.UMAP(random_state=42).fit_transform(X)
-
 
     plt.figure(figsize=(10, 7)) 
 
@@ -143,8 +138,6 @@ def compute_and_plot_reduction_change(act_refusal_comp, act_nn_refusal_comp, act
         X_embedded = pca.fit(X_comp).transform(X_rep)
     elif reduction_type=='tsne': 
         X_embedded = TSNE(n_components=n_compo, perplexity=30, random_state=42).fit(X_comp).transform(X_rep)
-    elif reduction_type=='umap-unsupervised': 
-        X_embedded = umap.UMAP(random_state=42).fit(X_comp).transform(X_rep)
 
     plt.figure(figsize=(10, 7)) 
 

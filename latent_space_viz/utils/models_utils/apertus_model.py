@@ -4,7 +4,6 @@ import os
 
 from torch import Tensor
 from transformers import AutoTokenizer, AutoModelForCausalLM
-from peft import PeftModel
 from typing import List
 from torch import Tensor
 from jaxtyping import Int, Float
@@ -23,6 +22,8 @@ APERTUS_CHAT_TEMPLATE =  """<s><|system_start|>{system}
 Knowledge cutoff: 2024-04
 Current date: 2025-10-23<|system_end|><|developer_start|>Deliberation: disabled
 Tool Capabilities: disabled<|developer_end|><|user_start|>{instruction}<|user_end|><|assistant_start|>"""
+
+APERTUS_REFUSAL_TOKS = [] # ['I', 'As']
 
 def format_instruction_apertus_chat(
     instruction: str,
@@ -94,6 +95,7 @@ def detokenize_instructions_apertus_chat(
         truncation=False,
         return_tensors="pt",
     )
+
     return result
 
 def orthogonalize_apertus_weights(model, direction: Float[Tensor, "d_model"]):
@@ -131,24 +133,9 @@ class ApertusModel(ModelBase):
                 subfolder=f"{checkpoint}",
             ).eval()
 
-        model.requires_grad_(False) 
-
-        return model
-
-    def _load_model_LoRA(self, model_path, model_path_lora, checkpoint=False, dtype=torch.bfloat16):
-        # Load base model
-        model_base = AutoModelForCausalLM.from_pretrained(
-            pretrained_model_name_or_path=model_path,  # Base model
-            load_in_4bit=False, 
-            dtype=None).eval()
-        
-        # Load LoRA adapter directly
-        model = PeftModel.from_pretrained(
-            model_base,
-            model_path_lora,
-            subfolder=checkpoint 
-        ).eval()
-
+        print(model)
+        print(model_path)
+        print(checkpoint)
         model.requires_grad_(False) 
 
         return model
@@ -165,7 +152,10 @@ class ApertusModel(ModelBase):
 
     def _get_eoi_toks(self):
         return self.tokenizer.encode(APERTUS_CHAT_TEMPLATE.split("{instruction}")[-1])
-    
+
+    def _get_refusal_toks(self):
+        return APERTUS_REFUSAL_TOKS
+
     def _get_model_block_modules(self):
         return self.model.model.layers
 

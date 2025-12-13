@@ -23,8 +23,6 @@ def parse_arguments():
     parser.add_argument('--prompts_type', type=str, default='all')
     return parser.parse_args()
 
-
-
 def compute_and_plot_with_refusal(lg1, lg2, model_base, path, prompt_type, checkpoint, pca="refusal", layer=-1, lg_model="en"): 
     if prompt_type=="all": 
         harmful_train_vanilla_lg1, harmless_train_vanilla_lg1 = load_and_sample_datasets(lg1, "vanilla")
@@ -136,7 +134,6 @@ if __name__ == "__main__":
     args = parse_arguments()
 
     model_alias = os.path.basename(args.model_path)
-
 
     model_base = AutoModelForCausalLM.from_pretrained(args.model_path, subfolder=f"{args.checkpoint}").to('cuda') 
     num_layers = model_base.config.num_hidden_layers

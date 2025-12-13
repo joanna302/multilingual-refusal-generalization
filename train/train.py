@@ -29,7 +29,7 @@ def parse_arguments():
     parser.add_argument(
         '--name_data', 
         type=str, 
-        default="en_wo_WJ")
+        default="en")
     parser.add_argument(
         '--hf_id', 
         type=str)
@@ -39,19 +39,11 @@ def parse_arguments():
     parser.add_argument(
         '--lr', 
         type=float, 
-        default=8e-4)
+        default=8e-5)
     parser.add_argument(
         '--per_device_train_batch_size', 
         type=int, 
         default=16)
-    parser.add_argument(
-        '--r', 
-        type=int, 
-        default=32)
-    parser.add_argument(
-        '--alpha', 
-        type=int, 
-        default=32)
     parser.add_argument(
         '--seed', 
         type=int, 
@@ -82,23 +74,6 @@ def apply_template(example):
     ]
     return {"conversation": conversation}
 
-def apply_custom_chat_template(conversation):
-    """Format a conversation with simple, clear structure"""
-    text = ""
-    for turn in conversation:
-        role = turn["role"]
-        content = turn["content"]
-        
-        if role == "system":
-            text += f"<|system_start|>{content}<|system_end|>"
-        elif role == "user":
-            text += f"<|user_start|>{content}<|user_end|>"
-        elif role == "assistant":
-            text += f"<|assistant_start|>\n{content}<|assistant_end|>"
-
-    return text
-
-
 if __name__ == "__main__": 
 
     args = parse_arguments()
@@ -123,56 +98,72 @@ if __name__ == "__main__":
         alpaca_data = Dataset.from_pandas(alpaca_data.rename({"output":"chosen_response"}, axis=1))
 
     if args.add_alpaca==True: 
-        name = f"Apertus-8B-Base_{args.name_data}_alpaca_{args.alpaca_ratio}_part_{args.training_type}_LoRA_{args.lr}"
+        name = f"{args.model_name}-Base_{args.name_data}_alpaca_{args.alpaca_ratio}_part_{args.training_type}_{args.lr}"
     else : 
-        name = f"Apertus-8B-Base_{args.name_data}_{args.training_type}_{args.lr}"
+        name = f"{args.model_name}-Base_{args.name_data}_{args.training_type}_{args.lr}"
 
-    wandb.init(
-        project=name, 
-        name=f"{name}-v1",  
-        config={
-            "max_seq_length": 2048,
-            "lora_r":  args.r ,
-            "lora_alpha": args.alpha ,
-            "learning_rate": args.lr,
-            "padding_free":False, 
-            "per_device_train_batch_size":args.per_device_train_batch_size, 
-            "chat_template":"Apertus", 
-            "warmup_ratio":0.03
-        },
-        tags=["aperture", "unsloth", "lora", args.name_data],  # Add tags for organization
-    )
+    os.environ['WANDB_PROJECT'] = name
     
-    model_base, tokenizer_base = FastLanguageModel.from_pretrained(
-        model_name = f"swiss-ai/Apertus-8B-2509",
-        max_seq_length = 2048,   # Context length - can be longer, but uses more memory
-        load_in_4bit = True,     # 4bit uses much less memory
-        device_map='auto', 
-    )
-    del tokenizer_base
-    torch.cuda.empty_cache()
-    gc.collect()
+    if "Qwen" in args.model_name: 
+        model_base, tokenizer_base = FastLanguageModel.from_pretrained(
+            model_name = f"unsloth/{args.model_name}-Base",
+            max_seq_length = 2048,   # Context length - can be longer, but uses more memory
+            load_in_4bit = False,     # 4bit uses much less memory
+            load_in_8bit = False,    # A bit more accurate, uses 2x memory
+            full_finetuning = True, # We have full finetuning now!
+            device_map='auto', 
+        )
+        del tokenizer_base
+        torch.cuda.empty_cache()
+        gc.collect()
 
-    tokenizer = AutoTokenizer.from_pretrained(f"unsloth/Apertus-8B-Instruct-2509")
-    tokenizer.padding_side = 'right' # padding to right (otherwise SFTTrainer shows warning)
+        tokenizer = AutoTokenizer.from_pretrained(f"unsloth/{args.model_name}")
+
+        tokenizer.add_special_tokens({"pad_token": "<|pad|>"})
+        model_base.config.pad_token_id = tokenizer.pad_token_id # updating model config
+        tokenizer.padding_side = 'right' # padding to right (otherwise SFTTrainer shows warning)
+
+    elif "Apertus" in args.model_name: 
+        model_base, tokenizer_base = FastLanguageModel.from_pretrained(
+            model_name = f"swiss-ai/{args.model_name}-2509",
+            max_seq_length = 2048,   # Context length - can be longer, but uses more memory
+            load_in_4bit = False,     # 4bit uses much less memory
+            load_in_8bit = False,    # A bit more accurate, uses 2x memory
+            full_finetuning = True, # We have full finetuning now!
+            device_map='auto', 
+        )
+        del tokenizer_base
+        torch.cuda.empty_cache()
+        gc.collect()
+
+        tokenizer = AutoTokenizer.from_pretrained(f"unsloth/{args.model_name}-Instruct-2509")
+        tokenizer.pad_token = tokenizer.eos_token 
+        tokenizer.padding_side = 'right' # padding to right (otherwise SFTTrainer shows warning)
+    
+    else : 
+        model_base, tokenizer_base = FastLanguageModel.from_pretrained(
+            model_name = f"unsloth/{args.model_name}-pt",
+            max_seq_length = 2048,   # Context length - can be longer, but uses more memory
+            load_in_4bit = False,     # 4bit uses much less memory
+            load_in_8bit = False,    # A bit more accurate, uses 2x memory
+            full_finetuning = True, # We have full finetuning now!
+            device_map='auto', 
+        )
+
+        del tokenizer_base
+        torch.cuda.empty_cache()
+        gc.collect()
+
+        tokenizer = AutoTokenizer.from_pretrained(f"unsloth/{args.model_name}-it")
+            
+        tokenizer.pad_token = tokenizer.eos_token 
+        tokenizer.padding_side = 'right' # padding to right (otherwise SFTTrainer shows 
 
     data_train =data_train.map(apply_template)
 
     if args.add_alpaca==True : 
         alpaca_data =alpaca_data.map(apply_template)
         data_train = concatenate_datasets([alpaca_data, data_train])
-
-    special_tokens = [
-        "<|system_start|>", "<|system_end|>",
-        "<|user_start|>", "<|user_end|>",
-        "<|assistant_start|>", "<|assistant_end|>", 
-        "<s>", "<pad>"
-    ]
-
-    tokenizer.add_special_tokens({"additional_special_tokens": special_tokens})
-    model_base.resize_token_embeddings(len(tokenizer))
-
-    #text = [apply_custom_chat_template(conv) for conv in data_train["conversation"]]
 
     text = tokenizer.apply_chat_template(list(data_train["conversation"]), 
                                         tokenize=False, 
@@ -187,33 +178,18 @@ if __name__ == "__main__":
 
     dataset = Dataset.from_pandas(data)
 
-    model = FastLanguageModel.get_peft_model(
-        model_base,
-        r = args.r ,           # Choose any number > 0! Suggested 8, 16, 32, 64, 128
-        target_modules = ["q_proj", "k_proj", "v_proj", "o_proj",
-                        "gate_proj", "up_proj", "down_proj",],
-        lora_alpha = args.alpha ,  # Best to choose alpha = rank or rank*2
-        lora_dropout = 0, # Supports any, but = 0 is optimized
-        bias = "none",    # Supports any, but = "none" is optimized
-        # [NEW] "unsloth" uses 30% less VRAM, fits 2x larger batch sizes!
-        use_gradient_checkpointing = "unsloth" , # True or "unsloth" for very long context
-        random_state = 3407,
-        use_rslora = False,   # We support rank stabilized LoRA
-        loftq_config = None,  # And LoftQ
-
-    )
 
     print("Start SFT training")
 
     trainer = SFTTrainer(
-        model = model,
+        model = model_base,
         tokenizer = tokenizer,
         train_dataset = dataset,
         use_gradient_checkpointing = "unsloth" , # True or "unsloth" for very long context
         args = SFTConfig(
             dataset_text_field = "text",
             per_device_train_batch_size = args.per_device_train_batch_size,
-            warmup_ratio=0.03,
+            warmup_steps = 5,
             num_train_epochs=3, # Set this for 1 full training run.
             max_steps=-1,  
             learning_rate = args.lr, # 2e-4 = high lr / 2e-5 = low lr / 8e-5 = middle lr 
@@ -224,7 +200,6 @@ if __name__ == "__main__":
             seed=args.seed,
             data_seed=42, 
             report_to = "wandb", # Use this for WandB etc
-            #eval_strategy="steps", 
             save_strategy="steps", 
             save_steps=1/6, 
             push_to_hub=True, 
@@ -237,8 +212,8 @@ if __name__ == "__main__":
     # train model 
     trainer_stats = trainer.train()
 
-    model.save_pretrained(name)  
+    model_base.save_pretrained(name)  
     tokenizer.save_pretrained(name) 
 
-    model.push_to_hub(f"{args.hf_id}/{name}", token = args.hf_token) # Online saving
+    model_base.push_to_hub(f"{args.hf_id}/{name}", token = args.hf_token) # Online saving
     tokenizer.push_to_hub(f"{args.hf_id}/{name}", token = args.hf_token) # Online saving

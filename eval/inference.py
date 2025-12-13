@@ -25,21 +25,6 @@ def chat_template(example):
     ]
     return {"conversation": conversation}
 
-def apply_custom_chat_template(conversation):
-    """Format a conversation with simple, clear structure"""
-    text = ""
-    for turn in conversation:
-        role = turn["role"]
-        content = turn["content"]
-        
-        if role == "system":
-            text += f"<|system_start|>{content}<|system_end|>"
-        elif role == "user":
-            text += f"<|user_start|>{content}<|user_end|>"
-        elif role == "assistant":
-            text += f"<|assistant_start|>\n{content}<|assistant_end|>"
-
-    return text
 
 def parse_arguments():
     parser = argparse.ArgumentParser()
@@ -58,11 +43,11 @@ def parse_arguments():
     parser.add_argument(
         '--name_data', 
         type=str, 
-        default="en_with_more_wj_benign")
+        default="en")
     parser.add_argument(
         '--lr', 
         type=int, 
-        default=8e-4)
+        default=8e-5)
     parser.add_argument(
         '--training_type', 
         type=str, 
@@ -101,59 +86,29 @@ if __name__ == "__main__":
             data_eval = data_eval.drop(col, axis=1)
 
     if args.add_alpaca==True: 
-        model_name = f"{args.model_name}-Base_{args.name_data}_alpaca_{args.alpaca_ratio}_part_{args.training_type}_LoRA_{args.lr}"
+        model_name = f"{args.model_name}-Base_{args.name_data}_alpaca_{args.alpaca_ratio}_part_{args.training_type}_{args.lr}"
     else : 
-        model_name = f"{args.model_name}-Base_{args.name_data}_{args.training_type}_LoRA_{args.lr}"
-
-    #model = AutoModelForCausalLM.from_pretrained(f"{args.repo_id}/{model_name}", subfolder=f"{args.checkpoint}").to('cuda') 
-    #tokenizer = AutoTokenizer.from_pretrained(f"{args.repo_id}/{model_name}")
-
+        model_name = f"{args.model_name}-Base_{args.name_data}_{args.training_type}_{args.lr}"
     max_seq_length = 2048 
 
     print(f"{args.repo_id}/{model_name}")
 
-    # Load base model
-    model, tokenizer = FastLanguageModel.from_pretrained(
-        model_name="swiss-ai/Apertus-8B-2509",  # Base model
-        max_seq_length=max_seq_length,
-        load_in_4bit=False, 
-        dtype=None )
+    model = AutoModelForCausalLM.from_pretrained(f"{args.repo_id}/{model_name}", subfolder=f"{args.checkpoint}").to('cuda') 
+    tokenizer = AutoTokenizer.from_pretrained(f"{args.repo_id}/{model_name}")
 
-    # Load LoRA adapter directly
-    model = PeftModel.from_pretrained(
-        model,
-        f"{args.repo_id}/{model_name}",
-        subfolder=args.checkpoint if args.checkpoint else None
-    )
-
-    # Merge adapter weights for faster inference (optional)
-    model = model.merge_and_unload()
-
-    # Enable inference mode
-    FastLanguageModel.for_inference(model)
-
+    # change the padding tokenizer value
+    if "gemma" in args.model_name: 
+        tokenizer.add_special_tokens({"pad_token": "<pad>"})
+        model.config.pad_token_id = tokenizer.pad_token_id
+        model.config.eos_token_id = tokenizer.eos_token_id 
+    elif "Qwen3" in args.model_name: 
+        tokenizer.add_special_tokens({"pad_token": "<|pad|>"})
+        model.config.pad_token_id = tokenizer.pad_token_id # updating model config # padding to right (otherwise SFTTrainer shows warning)
+        print("qwen")
     tokenizer.padding_side = 'left'
-
-    special_tokens = [
-        "<|system_start|>", "<|system_end|>",
-        "<|user_start|>", "<|user_end|>",
-        "<|assistant_start|>", "<|assistant_end|>"
-    ]
-
-    tokenizer.add_special_tokens({"additional_special_tokens": special_tokens})
-    model.resize_token_embeddings(len(tokenizer))
-
-
-    tokenizer.eos_token = "<|assistant_end|>"
-    tokenizer.pad_token = "<pad>" 
-    model.config.eos_token_id = tokenizer.eos_token_id
-    model.config.pad_token_id = tokenizer.pad_token_id
 
     ### process data
     data_high_bs, data_low_bs = preprocess_data(data_eval)
-
-    #text_low = [apply_custom_chat_template(conv) for conv in list(data_low_bs['conversation'])]
-
 
     text_low = tokenizer.apply_chat_template(
         list(data_low_bs['conversation']),
@@ -171,12 +126,20 @@ if __name__ == "__main__":
         enable_thinking = False, # Disable thinking
     )
 
-    #text_high = [apply_custom_chat_template(conv) for conv in list(data_high_bs['conversation'])]
-
     data_high_bs = data_high_bs.add_column("text", text_high)   
 
     bs_high = 128
     bs_low = 16
+
+    if "gemma" in args.model_name: 
+        bs_high = 16 
+        bs_low = 4
+    elif "Qwen3" in args.model_name: 
+        bs_high = 32
+        bs_low = 16
+    else : 
+        bs_high = 32
+        bs_low = 4
 
     data_loader_high_bs = DataLoader(data_high_bs, batch_size=bs_high, shuffle=False)
     data_loader_low_bs = DataLoader(data_low_bs, batch_size=bs_low, shuffle=False)
@@ -256,4 +219,4 @@ if __name__ == "__main__":
 
         data_res = datasets.concatenate_datasets([data_high_bs, data_low_bs])
 
-        data_res.to_csv(f"../results/Apertus-8B/{args.name_data}/{file_name}")
+        data_res.to_csv(f"../results/{args.model_name}/{args.name_data}/{file_name}")
